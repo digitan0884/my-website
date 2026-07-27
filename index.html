@@ -423,6 +423,29 @@
   }
   .card:hover .del{ opacity:1; }
   .del:hover{ color:var(--ribbon); border-color:var(--ribbon); }
+  .card .edit-entry{
+    position:absolute; top:16px; right:52px;
+    background: rgba(4,7,5,0.8);
+    border:1px solid var(--line);
+    color:var(--muted);
+    width:26px; height:26px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    font-size:0.75rem;
+    opacity:0;
+    transition: opacity .2s, color .2s, border-color .2s;
+  }
+  .card:hover .edit-entry{ opacity:1; }
+  .edit-entry:hover{ color:var(--accent); border-color:var(--accent-soft); }
+  .card .cap .note{
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    font-size:0.82rem;
+    line-height:1.6;
+    color:var(--ink);
+    opacity:0.85;
+    margin-top:6px;
+    white-space:pre-wrap;
+  }
   .card .unsynced{
     position:absolute; top:16px; left:16px;
     background: rgba(255,77,109,0.15);
@@ -918,7 +941,7 @@
   </div>
   <div class="streak-plaque">
     <div class="num" id="streakNum">0</div>
-    <div class="label" id="streakLabel">Day Streak</div>
+    <div class="label" id="streakLabel">Total Pieces</div>
   </div>
 </header>
 
@@ -950,7 +973,7 @@
     <div class="field-row">
       <div class="field">
         <label>Date</label>
-        <input type="text" id="fDate" readonly>
+        <input type="date" id="fDate">
       </div>
       <div class="field">
         <label>Title</label>
@@ -1301,20 +1324,67 @@ const firebaseConfig = {
   let pendingMediaType = null;
   let pendingYoutubeId = null;
   let pendingYoutubeUrl = null;
+  let editingEntryId = null;
 
   const today = new Date();
-  fDate.value = dateLabelOf(today);
+  fDate.value = dateKeyOf(today);
 
   addToggle.addEventListener('click', () => {
     if(!requireAdmin()) return;
+    editingEntryId = null;
+    submitBtn.textContent = "Hang on the Wall";
+    fTitle.value = ''; fNote.value = '';
+    fDate.value = dateKeyOf(new Date());
+    resetImagePicker();
     addForm.classList.add('open');
     addToggle.style.display = 'none';
   });
   cancelBtn.addEventListener('click', closeForm);
   function closeForm(){
+    editingEntryId = null;
+    submitBtn.textContent = "Hang on the Wall";
     addForm.classList.remove('open');
     addToggle.style.display = '';
     formMsg.textContent = '';
+  }
+
+  function openEntryForEdit(en){
+    if(!requireAdmin()) return;
+    editingEntryId = en.id;
+    fTitle.value = en.title || '';
+    fNote.value = en.note || '';
+    fDate.value = en.dateKey || dateKeyOf(new Date());
+    submitBtn.textContent = 'Save Changes';
+
+    pendingMedia = en.media || null;
+    pendingMediaType = en.mediaType || null;
+    pendingYoutubeId = en.youtubeId || null;
+    pendingYoutubeUrl = en.youtubeUrl || null;
+
+    if(pendingMediaType === 'youtube'){
+      mediaMode = 'youtube';
+      mediaTabs.forEach(b => b.classList.toggle('active', b.dataset.mode === 'youtube'));
+      dropZone.style.display = 'none';
+      ytInputWrap.style.display = 'block';
+      fYoutube.value = pendingYoutubeUrl || '';
+      ytPreviewImg.src = pendingMedia || '';
+      ytPreviewImg.style.display = pendingMedia ? 'block' : 'none';
+      previewImg.src = ''; previewImg.classList.remove('active');
+      dropZone.classList.remove('has-image');
+    } else {
+      mediaMode = 'file';
+      mediaTabs.forEach(b => b.classList.toggle('active', b.dataset.mode === 'file'));
+      dropZone.style.display = '';
+      ytInputWrap.style.display = 'none';
+      fYoutube.value = ''; ytPreviewImg.src = ''; ytPreviewImg.style.display = 'none';
+      previewImg.src = pendingMedia || '';
+      previewImg.classList.toggle('active', !!pendingMedia);
+      dropZone.classList.toggle('has-image', !!pendingMedia);
+    }
+
+    addForm.classList.add('open');
+    addToggle.style.display = 'none';
+    addForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function resetImagePicker(){
@@ -1408,25 +1478,31 @@ const firebaseConfig = {
     formMsg.textContent = '';
     if(!requireAdmin()) return;
     if(!fTitle.value.trim()){ formMsg.textContent = 'Please enter a title.'; return; }
+    if(!fDate.value){ formMsg.textContent = 'Please choose a date.'; return; }
     if(mediaMode === 'youtube' && fYoutube.value.trim() && !pendingYoutubeId){
       formMsg.textContent = "Couldn't read that YouTube URL.";
       return;
     }
     submitBtn.disabled = true;
-    const now = new Date();
-    const entry = {
-      dateKey: dateKeyOf(now),
-      dateLabel: dateLabelOf(now),
+    const [y, m, d] = fDate.value.split('-').map(Number);
+    const chosenDate = new Date(y, m - 1, d);
+    const data = {
+      dateKey: dateKeyOf(chosenDate),
+      dateLabel: dateLabelOf(chosenDate),
       title: fTitle.value.trim(),
       note: fNote.value.trim(),
       media: pendingMedia || null,
       mediaType: pendingMedia ? pendingMediaType : null,
       youtubeId: pendingMediaType === 'youtube' ? pendingYoutubeId : null,
-      youtubeUrl: pendingMediaType === 'youtube' ? pendingYoutubeUrl : null,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      youtubeUrl: pendingMediaType === 'youtube' ? pendingYoutubeUrl : null
     };
     try{
-      await db.collection('entries').add(entry);
+      if(editingEntryId){
+        await db.collection('entries').doc(editingEntryId).set(data, { merge: true });
+      } else {
+        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection('entries').add(data);
+      }
       fTitle.value = ''; fNote.value = '';
       resetImagePicker();
       closeForm();
@@ -1455,22 +1531,18 @@ const firebaseConfig = {
     return '<img src="' + en.media + '" alt="">';
   }
 
-  function computeStreak(sortedAsc){
-    if(!sortedAsc.length){ streakNum.textContent = '0'; streakLabel.textContent = 'Start today'; return; }
-    const dateKeys = new Set(sortedAsc.map(e => e.dateKey));
-    let streak = 0;
-    const d = new Date();
-    if(!dateKeys.has(dateKeyOf(d))){ d.setDate(d.getDate() - 1); }
-    while(dateKeys.has(dateKeyOf(d))){
-      streak++;
-      d.setDate(d.getDate() - 1);
-    }
-    streakNum.textContent = String(streak);
-    streakLabel.textContent = streak > 0 ? 'Day Streak' : 'Start today';
+  function updateTotalCount(list){
+    const total = list.length;
+    streakNum.textContent = String(total);
+    streakLabel.textContent = total > 0 ? 'Total Pieces' : 'Start today';
   }
 
   function renderEntries(){
-    const ascending = entries.slice().sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+    const ascending = entries.slice().sort((a, b) => {
+      const byDate = (a.dateKey || '').localeCompare(b.dateKey || '');
+      if(byDate !== 0) return byDate;
+      return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+    });
     ascending.forEach((en, i) => { en.day = i + 1; });
     const latest = ascending[ascending.length - 1];
 
@@ -1492,17 +1564,25 @@ const firebaseConfig = {
       const typeTag = mediaType(en) === 'youtube' ? '<div class="type-tag">▶ YOUTUBE</div>' : '';
       return '<div class="card" data-id="' + en.id + '">' +
         '<div class="thumb">' + markup + typeTag + '</div>' +
+        '<div class="edit-entry admin-only" data-id="' + en.id + '">✎</div>' +
         '<div class="del admin-only" data-id="' + en.id + '">×</div>' +
         '<div class="cap">' +
           '<div class="num">DAY ' + String(en.day).padStart(3, '0') + '</div>' +
           '<div class="ttl">' + escapeHtml(en.title) + '</div>' +
           '<div class="dt">' + escapeHtml(en.dateLabel) + '</div>' +
+          (en.note ? '<div class="note">' + escapeHtml(en.note) + '</div>' : '') +
         '</div>' +
       '</div>';
     }).join('');
     emptyArchive.style.display = descending.length ? 'none' : 'block';
     archiveCount.textContent = descending.length + ' pieces';
 
+    grid.querySelectorAll('.edit-entry').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const en = entries.find(e => e.id === btn.dataset.id);
+        if(en) openEntryForEdit(en);
+      });
+    });
     grid.querySelectorAll('.del').forEach(btn => {
       btn.addEventListener('click', async () => {
         if(!requireAdmin()) return;
@@ -1512,7 +1592,7 @@ const firebaseConfig = {
       });
     });
 
-    computeStreak(ascending);
+    updateTotalCount(ascending);
   }
 
   if(db){
