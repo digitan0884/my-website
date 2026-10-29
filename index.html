@@ -1078,6 +1078,18 @@
   body:not(.theme-denken) .history-lead,
   body:not(.theme-denken) .history-card .h-date{ color:var(--content-soft) !important; }
   body:not(.theme-denken) .brand p:first-of-type{ color:var(--content) !important; }
+
+  /* Historyカード:ロゴは枠に収め、「101~」は常にロゴの右に並べる */
+  .history-card .h-top{ flex-wrap:nowrap; gap:16px; }
+  .history-card .h-box{ flex-shrink:0; white-space:nowrap; }
+  .history-card .h-logo{ min-width:0; }
+  .history-card .h-logo.studio{ height:auto; width:clamp(150px, 46vw, 240px); max-width:64%; }
+  .history-card .h-logo.denken{ max-width:48%; object-fit:contain; }
+  @media (max-width:520px){
+    .history-card{ padding:20px 18px; }
+    .history-card .h-open{ display:none; }
+    .history-card .h-box{ font-size:1rem; padding:7px 14px; }
+  }
 </style>
 </head>
 <body>
@@ -1931,7 +1943,7 @@ const firebaseConfig = {
       const from = sr.from || (items.length ? items[0].dateKey.replace(/-0?/g, '/') : null);
       const to = sr.to || '';
       const dateLine = from ? (from + ' ~ ' + to) : 'これから';
-      const title = sr.logo ? '<img class="h-logo" src="' + document.getElementById(sr.logoId).src + '" alt="' + escapeHtml(sr.name) + '">'
+      const title = sr.logo ? '<img class="h-logo ' + sr.id + '" src="' + document.getElementById(sr.logoId).src + '" alt="' + escapeHtml(sr.name) + '">'
                             : '<div class="h-title">' + escapeHtml(sr.name) + '</div>';
       return '<div class="history-card' + (sr.id === 'denken' ? ' is-denken' : '') + '" data-series="' + sr.id + '">' +
         '<div class="h-open">OPEN →</div>' +
